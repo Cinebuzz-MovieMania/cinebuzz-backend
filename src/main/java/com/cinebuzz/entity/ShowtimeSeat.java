@@ -1,5 +1,6 @@
 package com.cinebuzz.entity;
 
+import com.cinebuzz.enums.SeatStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
