@@ -8,10 +8,10 @@
 		<version>4.0.5</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.example</groupId>
-	<artifactId>Cinebuzz</artifactId>
+	<groupId>com.cinebuzz</groupId>
+	<artifactId>cinebuzz</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
+    <name>cinebuzz</name>
 	<description/>
 	<url/>
 	<licenses>

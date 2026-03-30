@@ -1,4 +1,4 @@
-package com.example.Cinebuzz;
+package com.cinebuzz;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
