@@ -19,3 +19,12 @@ spring:
 
 server:
     port: 8010
+    servlet:
+      context-path: /cinebuzz
+
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui/index.html

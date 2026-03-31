@@ -7,9 +7,9 @@ import lombok.Setter;
 @Getter
 @Setter
 @AllArgsConstructor
-public class CityResponseDto {
+public class ApiResponse<T> {
 
-    private Long id;
-    private String name;
-    private String state;
+    private boolean success;
+    private String message;
+    private T data;
 }

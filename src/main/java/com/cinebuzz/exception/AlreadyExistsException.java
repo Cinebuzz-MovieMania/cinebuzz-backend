@@ -1,0 +1,7 @@
+package com.cinebuzz.exception;
+
+public class AlreadyExistsException extends RuntimeException {
+    public AlreadyExistsException(String message) {
+        super(message);
+    }
+}
