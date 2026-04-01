@@ -17,6 +17,19 @@ spring:
                 dialect: org.hibernate.dialect.MySQLDialect
                 format_sql: true
 
+    servlet:
+        multipart:
+            enabled: true
+            max-file-size: 5MB
+            max-request-size: 5MB
+
+r2:
+    endpoint: https://d236891578e8254c1a00e36bb97ac702.r2.cloudflarestorage.com
+    access-key: f4d564667dc1bb1fcd742c4781be30ef
+    secret-key: c9fd19d1ad3b471b51e91269d90fcd200a2c1728ea1340ce6d736bb916ecab4c
+    bucket: cinebuzz-movie-posters
+    public-url: https://pub-7c141814f35a4f138c9708c94ab49568.r2.dev
+
 server:
     port: 8010
     servlet:
@@ -28,3 +41,7 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui/index.html
+
+jwt:
+  secret: 5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437
+  expiration: 86400000

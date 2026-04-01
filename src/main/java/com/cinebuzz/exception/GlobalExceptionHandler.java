@@ -26,6 +26,14 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>(false, ex.getMessage(), null));
     }
 
+    // Business-rule validation (showtimes, etc.)
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessValidation(ValidationException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>(false, ex.getMessage(), null));
+    }
+
     // Handles @Valid validation failures
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {

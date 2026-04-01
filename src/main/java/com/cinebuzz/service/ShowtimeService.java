@@ -9,6 +9,7 @@ import com.cinebuzz.entity.Showtime;
 import com.cinebuzz.entity.ShowtimeSeat;
 import com.cinebuzz.enums.SeatStatus;
 import com.cinebuzz.exception.ResourceNotFoundException;
+import com.cinebuzz.exception.ValidationException;
 import com.cinebuzz.repository.MovieRepository;
 import com.cinebuzz.repository.ScreenRepository;
 import com.cinebuzz.repository.SeatRepository;
@@ -17,6 +18,8 @@ import com.cinebuzz.repository.ShowtimeSeatRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -39,6 +42,9 @@ public class ShowtimeService {
     @Autowired
     private SeatRepository seatRepository;
 
+    /** Minimum gap (minutes) between end of one show and start of the next on the same screen. */
+    public static final int MIN_GAP_BETWEEN_SHOWS_MINUTES = 5;
+
     @Transactional
     public ShowtimeResponseDto createShowtime(ShowtimeRequestDto dto) {
         Movie movie = movieRepository.findById(dto.getMovieId())
@@ -46,11 +52,16 @@ public class ShowtimeService {
         Screen screen = screenRepository.findById(dto.getScreenId())
                 .orElseThrow(() -> new ResourceNotFoundException("Screen not found with id: " + dto.getScreenId()));
 
+        LocalDateTime start = dto.getStartTime();
+        LocalDateTime end = start.plusMinutes(movie.getDurationMinutes());
+
+        validateShowtimeWindow(screen, start, end);
+
         Showtime showtime = new Showtime();
         showtime.setMovie(movie);
         showtime.setScreen(screen);
-        showtime.setStartTime(dto.getStartTime());
-        showtime.setEndTime(dto.getEndTime());
+        showtime.setStartTime(start);
+        showtime.setEndTime(end);
         showtime.setPrice(dto.getPrice());
         Showtime saved = showtimeRepository.save(showtime);
 
@@ -68,6 +79,25 @@ public class ShowtimeService {
         showtimeSeatRepository.saveAll(showtimeSeats);
 
         return mapToDto(saved);
+    }
+
+    /**
+     * End time is always start + movie duration. Ensures no conflict with existing shows on the same screen,
+     * including a mandatory gap ({@link #MIN_GAP_BETWEEN_SHOWS_MINUTES} min) after each show ends.
+     */
+    private void validateShowtimeWindow(Screen screen, LocalDateTime start, LocalDateTime end) {
+        if (!end.isAfter(start)) {
+            throw new ValidationException("Computed end time must be after start time.");
+        }
+
+        LocalDateTime newEndPlusGap = end.plusMinutes(MIN_GAP_BETWEEN_SHOWS_MINUTES);
+        if (showtimeRepository.countConflictingOnScreenWithGap(
+                screen.getId(), start, newEndPlusGap, MIN_GAP_BETWEEN_SHOWS_MINUTES) > 0) {
+            throw new ValidationException(
+                    "This screen already has a show in that window, or the "
+                            + MIN_GAP_BETWEEN_SHOWS_MINUTES
+                            + "-minute gap after another show is not satisfied. Choose a different start time.");
+        }
     }
 
     public List<ShowtimeResponseDto> getAllShowtimes() {

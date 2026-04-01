@@ -65,6 +65,25 @@ public class MovieService {
         movieRepository.deleteById(id);
     }
 
+    public MovieResponseDto updatePoster(Long id, String posterUrl, String posterKey) {
+        Movie movie = movieRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Movie not found with id: " + id));
+        movie.setPosterUrl(posterUrl);
+        movie.setPosterKey(posterKey);
+        Movie saved = movieRepository.save(movie);
+        return mapToDto(saved);
+    }
+
+    public MovieResponseDto removePoster(Long id, FileStorageService fileStorageService) {
+        Movie movie = movieRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Movie not found with id: " + id));
+        fileStorageService.delete(movie.getPosterKey());
+        movie.setPosterUrl(null);
+        movie.setPosterKey(null);
+        Movie saved = movieRepository.save(movie);
+        return mapToDto(saved);
+    }
+
     private MovieResponseDto mapToDto(Movie movie) {
         return new MovieResponseDto(
                 movie.getId(),
