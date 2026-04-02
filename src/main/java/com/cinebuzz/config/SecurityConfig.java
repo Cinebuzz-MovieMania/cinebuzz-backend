@@ -49,6 +49,17 @@ public class SecurityConfig {
                                 "/swagger-ui.html"
                         ).permitAll()
 
+                        // public read — browse movies/showtimes without login (guest mode)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/cities/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/theatres/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/screens/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/movies/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/showtimes/**").permitAll()
+
+                        // guest can open seat map before login
+                        .requestMatchers(HttpMethod.GET, "/api/v1/showtimes/*/seats").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/booking-pricing").permitAll()
+
                         // admin write operations — admin only
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/**").hasRole("ADMIN")

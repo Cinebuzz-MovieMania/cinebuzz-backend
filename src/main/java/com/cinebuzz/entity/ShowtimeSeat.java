@@ -32,4 +32,13 @@ public class ShowtimeSeat {
 
     @Column
     private LocalDateTime lockedUntil;
+
+    /** When status is LOCKED, which user holds this seat until {@link #lockedUntil}. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "held_by_user_id")
+    private User heldBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
+    private Booking booking;
 }
