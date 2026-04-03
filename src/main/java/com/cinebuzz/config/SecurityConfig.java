@@ -58,7 +58,9 @@ public class SecurityConfig {
 
                         // guest can open seat map before login
                         .requestMatchers(HttpMethod.GET, "/api/v1/showtimes/*/seats").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/booking-pricing").permitAll()
+
+                        // public browse (filters on server)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/browse/**").permitAll()
 
                         // admin write operations — admin only
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/**").hasRole("ADMIN")

@@ -10,6 +10,8 @@ import lombok.Setter;
 public class AuthResponseDto {
 
     private String token;
+    /** Database id of the authenticated user (for client display / debugging; API auth still uses JWT). */
+    private Long userId;
     private String name;
     private String email;
     private String role;

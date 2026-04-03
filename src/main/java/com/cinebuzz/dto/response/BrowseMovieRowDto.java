@@ -5,14 +5,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
-
+/**
+ * One movie playing in a city, with how many showtimes exist there (for the home grid).
+ */
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class BookingPricingResponseDto {
+public class BrowseMovieRowDto {
 
-    /** Same as configured rate (e.g. 0.10 for 10%). */
-    private BigDecimal convenienceFeeRate;
+    private MovieResponseDto movie;
+    private long showtimeCount;
 }

@@ -8,12 +8,14 @@ import com.cinebuzz.enums.Role;
 import com.cinebuzz.exception.AlreadyExistsException;
 import com.cinebuzz.repository.UserRepository;
 import com.cinebuzz.security.JwtUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class AuthService {
 
@@ -40,7 +42,8 @@ public class AuthService {
         user.setRole(Role.ROLE_USER);
         userRepository.save(user);
         String token = jwtUtil.generateToken(user);
-        return new AuthResponseDto(token, user.getName(), user.getEmail(), user.getRole().name());
+        log.info("[auth] Registered userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());
+        return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
     public void promoteToAdmin(Long userId) {
@@ -56,6 +59,7 @@ public class AuthService {
         User user = userRepository.findByEmail(dto.getEmail())
                 .orElseThrow(() -> new RuntimeException("User not found"));
         String token = jwtUtil.generateToken(user);
-        return new AuthResponseDto(token, user.getName(), user.getEmail(), user.getRole().name());
+        log.info("[auth] Login success userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());
+        return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 }

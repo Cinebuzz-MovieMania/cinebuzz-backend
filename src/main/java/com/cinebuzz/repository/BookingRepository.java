@@ -11,6 +11,6 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
-    @Query("SELECT b FROM Booking b JOIN FETCH b.showtime sh JOIN FETCH sh.movie JOIN FETCH sh.screen sc JOIN FETCH sc.theatre WHERE b.user.id = :userId ORDER BY b.createdAt DESC")
+    @Query("SELECT DISTINCT b FROM Booking b JOIN FETCH b.showtime sh JOIN FETCH sh.movie JOIN FETCH sh.screen sc JOIN FETCH sc.theatre WHERE b.user.id = :userId ORDER BY b.createdAt DESC")
     List<Booking> findAllByUserIdWithDetailsOrderByCreatedAtDesc(@Param("userId") Long userId);
 }

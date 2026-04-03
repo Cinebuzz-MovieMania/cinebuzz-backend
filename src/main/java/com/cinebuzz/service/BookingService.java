@@ -1,10 +1,7 @@
 package com.cinebuzz.service;
 
-import com.cinebuzz.config.BookingProperties;
 import com.cinebuzz.dto.request.BookingRequestDto;
-import com.cinebuzz.dto.response.BookingPricingResponseDto;
 import com.cinebuzz.dto.response.BookingResponseDto;
-import com.cinebuzz.dto.response.SeatHoldResponseDto;
 import com.cinebuzz.dto.response.SeatMapItemDto;
 import com.cinebuzz.dto.response.SeatMapResponseDto;
 import com.cinebuzz.entity.Booking;
@@ -18,6 +15,7 @@ import com.cinebuzz.repository.BookingRepository;
 import com.cinebuzz.repository.ShowtimeRepository;
 import com.cinebuzz.repository.ShowtimeSeatRepository;
 import com.cinebuzz.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,11 +27,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class BookingService {
 
     public static final int MIN_SEATS = 1;
     public static final int MAX_SEATS = 10;
+
+    public static final String MSG_BOOKING_FAILED =
+            "Sorry! These seats are no more available.";
 
     @Autowired
     private ShowtimeRepository showtimeRepository;
@@ -47,21 +49,14 @@ public class BookingService {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
-    private BookingProperties bookingProperties;
-
     @Transactional(readOnly = true)
-    public BookingPricingResponseDto getBookingPricingConfig() {
-        return new BookingPricingResponseDto(bookingProperties.getConvenienceFeeRate());
-    }
-
-    @Transactional
     public SeatMapResponseDto getSeatMap(Long showtimeId) {
-        releaseExpiredHolds();
+        log.debug("[seat-map] Loading seat map for showtimeId={}", showtimeId);
         Showtime showtime = showtimeRepository.findById(showtimeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Showtime not found with id: " + showtimeId));
 
         List<ShowtimeSeat> rows = showtimeSeatRepository.findByShowtimeIdWithSeatOrdered(showtimeId);
+        log.debug("[seat-map] showtimeId={} seatRows={}", showtimeId, rows.size());
         List<SeatMapItemDto> items = rows.stream()
                 .map(st -> new SeatMapItemDto(
                         st.getId(),
@@ -87,116 +82,30 @@ public class BookingService {
     }
 
     @Transactional
-    public SeatHoldResponseDto holdSeats(String userEmail, BookingRequestDto dto) {
+    public BookingResponseDto createBooking(Long userId, BookingRequestDto dto) {
         List<Long> ids = dto.getShowtimeSeatIds();
+        log.info("[booking-create] Request userId={} showtimeSeatIds={}", userId, ids);
         validateSeatIdList(ids);
 
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.warn("[booking-create] User not found id={}", userId);
+                    return new ResourceNotFoundException("User not found.");
+                });
 
-        releaseExpiredHolds();
-
-        List<ShowtimeSeat> rows = showtimeSeatRepository.findByIdInForUpdate(ids);
-        if (rows.size() != ids.size()) {
-            throw new ValidationException("One or more seats are invalid.");
+        List<ShowtimeSeat> seats = showtimeSeatRepository.findByIdInForUpdate(ids);
+        if (seats.size() != ids.size()) {
+            rejectBooking("Fewer seats than requested requestedIds=%s found=%s".formatted(ids, seats.size()));
         }
 
-        Long showtimeId = rows.get(0).getShowtime().getId();
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime until = now.plusMinutes(bookingProperties.getSeatHoldMinutes());
-
-        for (ShowtimeSeat st : rows) {
+        Long showtimeId = seats.get(0).getShowtime().getId();
+        for (ShowtimeSeat st : seats) {
+            Long stId = st.getId();
             if (!Objects.equals(st.getShowtime().getId(), showtimeId)) {
-                throw new ValidationException("All seats must belong to the same show.");
+                rejectBooking("showtimeSeatId=%s wrong showtime".formatted(stId));
             }
-            if (st.getStatus() == SeatStatus.BOOKED) {
-                throw new ValidationException("Seat " + st.getSeat().getSeatLabel() + " is already booked.");
-            }
-            if (st.getStatus() == SeatStatus.LOCKED) {
-                boolean expired = st.getLockedUntil() == null || st.getLockedUntil().isBefore(now);
-                boolean mine = st.getHeldBy() != null && st.getHeldBy().getId().equals(user.getId());
-                if (!expired && !mine) {
-                    throw new ValidationException("Seat " + st.getSeat().getSeatLabel() + " is no longer available.");
-                }
-            } else if (st.getStatus() != SeatStatus.AVAILABLE) {
-                throw new ValidationException("Seat " + st.getSeat().getSeatLabel() + " is no longer available.");
-            }
-        }
-
-        for (ShowtimeSeat st : rows) {
-            st.setStatus(SeatStatus.LOCKED);
-            st.setHeldBy(user);
-            st.setLockedUntil(until);
-        }
-
-        return new SeatHoldResponseDto(until, rows.size());
-    }
-
-    /**
-     * Clears LOCKED seats held by this user (e.g. user left checkout without paying).
-     */
-    @Transactional
-    public void releaseSeatHolds(String userEmail, BookingRequestDto dto) {
-        if (dto == null || dto.getShowtimeSeatIds() == null || dto.getShowtimeSeatIds().isEmpty()) {
-            return;
-        }
-        List<Long> ids = dto.getShowtimeSeatIds();
-        validateSeatIdList(ids);
-
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-
-        releaseExpiredHolds();
-
-        List<ShowtimeSeat> rows = showtimeSeatRepository.findByIdInForUpdate(ids);
-        if (rows.size() != ids.size()) {
-            return;
-        }
-
-        for (ShowtimeSeat st : rows) {
-            if (st.getStatus() != SeatStatus.LOCKED) {
-                continue;
-            }
-            if (st.getHeldBy() == null || !st.getHeldBy().getId().equals(user.getId())) {
-                continue;
-            }
-            st.setStatus(SeatStatus.AVAILABLE);
-            st.setHeldBy(null);
-            st.setLockedUntil(null);
-        }
-    }
-
-    @Transactional
-    public BookingResponseDto createBooking(String userEmail, BookingRequestDto dto) {
-        List<Long> ids = dto.getShowtimeSeatIds();
-        validateSeatIdList(ids);
-
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-
-        releaseExpiredHolds();
-
-        List<ShowtimeSeat> locked = showtimeSeatRepository.findByIdInForUpdate(ids);
-        if (locked.size() != ids.size()) {
-            throw new ValidationException("One or more seats are invalid.");
-        }
-
-        Long showtimeId = locked.get(0).getShowtime().getId();
-        LocalDateTime now = LocalDateTime.now();
-        for (ShowtimeSeat st : locked) {
-            if (!Objects.equals(st.getShowtime().getId(), showtimeId)) {
-                throw new ValidationException("All seats must belong to the same show.");
-            }
-            if (st.getStatus() == SeatStatus.BOOKED) {
-                throw new ValidationException("Seat " + st.getSeat().getSeatLabel() + " is no longer available.");
-            }
-            if (st.getStatus() != SeatStatus.LOCKED || st.getHeldBy() == null
-                    || !st.getHeldBy().getId().equals(user.getId())) {
-                throw new ValidationException(
-                        "Seats must be reserved from the seat map first. Go back and complete Pay again.");
-            }
-            if (st.getLockedUntil() == null || st.getLockedUntil().isBefore(now)) {
-                throw new ValidationException("Your seat hold expired. Go back and select seats again.");
+            if (st.getStatus() != SeatStatus.AVAILABLE) {
+                rejectBooking("showtimeSeatId=%s not available status=%s".formatted(stId, st.getStatus()));
             }
         }
 
@@ -204,75 +113,76 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Showtime not found."));
 
         BigDecimal unit = showtime.getPrice();
-        BigDecimal ticketSubtotal = unit.multiply(BigDecimal.valueOf(locked.size())).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal fee = ticketSubtotal
-                .multiply(bookingProperties.getConvenienceFeeRate())
-                .setScale(2, RoundingMode.HALF_UP);
-        BigDecimal total = ticketSubtotal.add(fee);
+        BigDecimal ticketSubtotal = unit.multiply(BigDecimal.valueOf(seats.size())).setScale(2, RoundingMode.HALF_UP);
 
         Booking booking = new Booking();
         booking.setUser(user);
         booking.setShowtime(showtime);
         booking.setTicketSubtotal(ticketSubtotal);
-        booking.setConvenienceFee(fee);
-        booking.setTotalAmount(total);
+        booking.setTotalAmount(ticketSubtotal);
         booking.setCreatedAt(LocalDateTime.now());
         booking = bookingRepository.save(booking);
 
-        for (ShowtimeSeat st : locked) {
+        for (ShowtimeSeat st : seats) {
             st.setStatus(SeatStatus.BOOKED);
             st.setBooking(booking);
-            st.setHeldBy(null);
-            st.setLockedUntil(null);
         }
 
+        log.info("[booking-create] Success bookingId={} userId={} showtimeId={} seatCount={} total={}",
+                booking.getId(), userId, showtimeId, seats.size(), booking.getTotalAmount());
         return toDto(booking, user);
+    }
+
+    private void rejectBooking(String internalReason) {
+        log.warn("[booking-create] Rejected: {}", internalReason);
+        throw new ValidationException(MSG_BOOKING_FAILED);
     }
 
     private void validateSeatIdList(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
+            log.warn("[booking] Validation failed: empty seat id list");
             throw new ValidationException("Select at least one seat.");
         }
         if (ids.size() < MIN_SEATS || ids.size() > MAX_SEATS) {
+            log.warn("[booking] Validation failed: seat count {} not in [{}, {}]", ids.size(), MIN_SEATS, MAX_SEATS);
             throw new ValidationException("You can book between " + MIN_SEATS + " and " + MAX_SEATS + " seats.");
         }
         long distinct = ids.stream().distinct().count();
         if (distinct != ids.size()) {
+            log.warn("[booking] Validation failed: duplicate seat ids in {}", ids);
             throw new ValidationException("Duplicate seats are not allowed.");
         }
     }
 
-    private void releaseExpiredHolds() {
-        showtimeSeatRepository.releaseExpiredLocksBefore(LocalDateTime.now());
-    }
-
     @Transactional(readOnly = true)
-    public List<BookingResponseDto> listBookingsForUser(String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+    public List<BookingResponseDto> listBookingsForUser(Long userId) {
+        log.debug("[bookings-list] userId={}", userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.warn("[bookings-list] User not found id={}", userId);
+                    return new ResourceNotFoundException("User not found.");
+                });
         List<Booking> bookings = bookingRepository.findAllByUserIdWithDetailsOrderByCreatedAtDesc(user.getId());
+        log.info("[bookings-list] userId={} bookingCount={}", userId, bookings.size());
         return bookings.stream().map(b -> toDto(b, user)).collect(Collectors.toList());
     }
 
     private BookingResponseDto toDto(Booking booking, User user) {
         Showtime showtime = booking.getShowtime();
-        List<ShowtimeSeat> seats = showtimeSeatRepository.findByBookingIdWithSeat(booking.getId());
-        List<String> labels = seats.stream()
+        List<ShowtimeSeat> seatRows = showtimeSeatRepository.findByBookingIdWithSeat(booking.getId());
+        List<String> labels = seatRows.stream()
                 .map(st -> st.getSeat().getSeatLabel())
                 .sorted()
                 .collect(Collectors.toList());
         BigDecimal subtotal = booking.getTicketSubtotal();
-        BigDecimal convenienceFee = booking.getConvenienceFee();
         if (subtotal == null) {
             subtotal = booking.getTotalAmount();
-            convenienceFee = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
 
         return new BookingResponseDto(
                 booking.getId(),
                 showtime.getId(),
                 subtotal,
-                convenienceFee,
                 booking.getTotalAmount(),
                 labels,
                 booking.getCreatedAt(),

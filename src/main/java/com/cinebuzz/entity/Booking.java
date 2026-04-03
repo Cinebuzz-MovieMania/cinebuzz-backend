@@ -26,12 +26,9 @@ public class Booking {
     @JoinColumn(name = "showtime_id", nullable = false)
     private Showtime showtime;
 
-    /** Ticket price × seat count (before convenience fee). */
+    /** Ticket price × seat count. */
     @Column(precision = 10, scale = 2)
     private BigDecimal ticketSubtotal;
-
-    @Column(precision = 10, scale = 2)
-    private BigDecimal convenienceFee;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;

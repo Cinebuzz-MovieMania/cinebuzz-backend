@@ -73,7 +73,6 @@ public class ShowtimeService {
             showtimeSeat.setShowtime(saved);
             showtimeSeat.setSeat(seat);
             showtimeSeat.setStatus(SeatStatus.AVAILABLE);
-            showtimeSeat.setLockedUntil(null);
             showtimeSeats.add(showtimeSeat);
         }
         showtimeSeatRepository.saveAll(showtimeSeats);
@@ -121,7 +120,8 @@ public class ShowtimeService {
         showtimeRepository.deleteById(id);
     }
 
-    private ShowtimeResponseDto mapToDto(Showtime showtime) {
+    /** Maps entity with seat counts (used by admin + browse APIs). */
+    public ShowtimeResponseDto mapToDto(Showtime showtime) {
         long availableSeats = showtimeSeatRepository
                 .countByShowtimeIdAndStatus(showtime.getId(), SeatStatus.AVAILABLE);
         int totalSeats = showtime.getScreen().getTotalRows() * showtime.getScreen().getSeatsPerRow();

@@ -18,7 +18,6 @@ public class BookingResponseDto {
     private Long bookingId;
     private Long showtimeId;
     private BigDecimal ticketSubtotal;
-    private BigDecimal convenienceFee;
     private BigDecimal totalAmount;
     private List<String> seatLabels;
     private LocalDateTime createdAt;
