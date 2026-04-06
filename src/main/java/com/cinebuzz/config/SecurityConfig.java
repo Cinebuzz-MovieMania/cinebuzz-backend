@@ -50,13 +50,16 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // public read — browse movies/showtimes without login (guest mode)
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/cities/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/theatres/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/screens/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/movies/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/showtimes/**").permitAll()
+                        // Note: "/resource/**" does not match "/resource" (no extra path segment); list both.
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/admin/cities", "/api/v1/admin/cities/**",
+                                "/api/v1/admin/theatres", "/api/v1/admin/theatres/**",
+                                "/api/v1/admin/screens", "/api/v1/admin/screens/**",
+                                "/api/v1/admin/movies", "/api/v1/admin/movies/**",
+                                "/api/v1/admin/showtimes", "/api/v1/admin/showtimes/**").permitAll()
 
-                        // guest can open seat map before login
+                        // guest can open showtime seat map (ShowtimeSeat + status) before login
+                        .requestMatchers(HttpMethod.GET, "/api/v1/showtimes/*/showtime-seats").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/showtimes/*/seats").permitAll()
 
                         // public browse (filters on server)

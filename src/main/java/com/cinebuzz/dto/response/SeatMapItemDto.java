@@ -18,4 +18,6 @@ public class SeatMapItemDto {
     private String rowLabel;
     private Integer seatNumber;
     private SeatStatus status;
+    /** Present when status is LOCKED; identifies who holds the seat for checkout. */
+    private Long lockedByUserId;
 }

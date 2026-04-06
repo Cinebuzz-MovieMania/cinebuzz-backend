@@ -2,6 +2,10 @@ spring:
     application:
         name: cinebuzz
 
+    # Optional local overrides (e.g. Gmail App Password). File is gitignored — copy from application-local.yml.example
+    config:
+        import: optional:classpath:application-local.yml
+
     datasource:
         url: jdbc:mysql://localhost:3306/cinebuzz
         username: root
@@ -22,6 +26,21 @@ spring:
             enabled: true
             max-file-size: 5MB
             max-request-size: 5MB
+
+    # Booking confirmation emails — Gmail *App Password* (16 chars), not your normal login.
+    # Prefer application-local.yml (gitignored) or env MAIL_PASSWORD (overrides file). See application-local.yml.example
+    mail:
+        host: smtp.gmail.com
+        port: 587
+        username: cinebuzz2003@gmail.com
+        password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
+        properties:
+            mail:
+                smtp:
+                    auth: true
+                    starttls:
+                        enable: true
+                        required: true
 
 r2:
     endpoint: https://d236891578e8254c1a00e36bb97ac702.r2.cloudflarestorage.com
@@ -47,6 +66,22 @@ springdoc:
   swagger-ui:
     path: /swagger-ui/index.html
 
+# JWT: expiration and clock-skew are separate concerns — see JwtUtil / JwtFilter
 jwt:
+  # HMAC key (Base64); must match at issue and verify time
   secret: 5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437
+  # How long the access token is valid after login/register (milliseconds). 86400000 = 24 hours
   expiration: 86400000
+  # After email OTP verification; time window to submit name/password (milliseconds). 900000 = 15 minutes
+  registration-proof-expiration-ms: 900000
+  # Extra tolerance when comparing exp/nbf to server time (seconds). Helps with small client/server clock drift
+  clock-skew-seconds: 120
+
+# Checkout: server-side seat hold after login (Pay → payment page)
+booking:
+  hold-ttl-seconds: 20
+
+# Same as spring.mail.username; used as From for booking confirmations
+cinebuzz:
+  mail:
+    from: cinebuzz2003@gmail.com

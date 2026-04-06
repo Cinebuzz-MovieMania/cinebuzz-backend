@@ -1,7 +1,9 @@
 package com.cinebuzz.service;
 
 import com.cinebuzz.dto.request.BookingRequestDto;
+import com.cinebuzz.dto.request.SeatHoldRequestDto;
 import com.cinebuzz.dto.response.BookingResponseDto;
+import com.cinebuzz.dto.response.SeatHoldResponseDto;
 import com.cinebuzz.dto.response.SeatMapItemDto;
 import com.cinebuzz.dto.response.SeatMapResponseDto;
 import com.cinebuzz.entity.Booking;
@@ -9,6 +11,7 @@ import com.cinebuzz.entity.Showtime;
 import com.cinebuzz.entity.ShowtimeSeat;
 import com.cinebuzz.entity.User;
 import com.cinebuzz.enums.SeatStatus;
+import com.cinebuzz.event.BookingConfirmedEvent;
 import com.cinebuzz.exception.ResourceNotFoundException;
 import com.cinebuzz.exception.ValidationException;
 import com.cinebuzz.repository.BookingRepository;
@@ -17,6 +20,8 @@ import com.cinebuzz.repository.ShowtimeSeatRepository;
 import com.cinebuzz.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +42,10 @@ public class BookingService {
     public static final String MSG_BOOKING_FAILED =
             "Sorry! These seats are no more available.";
 
+    /** Shown when hold TTL passed (seats return to AVAILABLE) or lock no longer valid at confirm time. */
+    public static final String MSG_HOLD_EXPIRED =
+            "Transaction failed. Please select your seats again.";
+
     @Autowired
     private ShowtimeRepository showtimeRepository;
 
@@ -49,8 +58,18 @@ public class BookingService {
     @Autowired
     private UserRepository userRepository;
 
-    @Transactional(readOnly = true)
+    @Autowired
+    private SeatHoldExpiryService seatHoldExpiryService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    @Value("${booking.hold-ttl-seconds:20}")
+    private int holdTtlSeconds;
+
+    @Transactional
     public SeatMapResponseDto getSeatMap(Long showtimeId) {
+        seatHoldExpiryService.expireStaleLocks();
         log.debug("[seat-map] Loading seat map for showtimeId={}", showtimeId);
         Showtime showtime = showtimeRepository.findById(showtimeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Showtime not found with id: " + showtimeId));
@@ -64,7 +83,8 @@ public class BookingService {
                         st.getSeat().getSeatLabel(),
                         st.getSeat().getRowLabel(),
                         st.getSeat().getSeatNumber(),
-                        st.getStatus()
+                        st.getStatus(),
+                        st.getLockedBy() != null ? st.getLockedBy().getId() : null
                 ))
                 .collect(Collectors.toList());
 
@@ -81,6 +101,84 @@ public class BookingService {
         );
     }
 
+    /**
+     * After login, when user reaches the payment page: lock seats for this user until {@link #holdTtlSeconds} elapses.
+     * Idempotent for the same user (refreshes TTL).
+     */
+    @Transactional
+    public SeatHoldResponseDto createHold(Long userId, SeatHoldRequestDto dto) {
+        List<Long> ids = dto.getShowtimeSeatIds();
+        log.info("[seat-hold] create userId={} seatIds={}", userId, ids);
+        validateSeatIdList(ids);
+
+        seatHoldExpiryService.expireStaleLocks();
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        List<ShowtimeSeat> seats = showtimeSeatRepository.findByIdInForUpdate(ids);
+        if (seats.size() != ids.size()) {
+            throw new ValidationException(MSG_BOOKING_FAILED);
+        }
+
+        Long showtimeId = seats.get(0).getShowtime().getId();
+        for (ShowtimeSeat st : seats) {
+            if (!Objects.equals(st.getShowtime().getId(), showtimeId)) {
+                throw new ValidationException(MSG_BOOKING_FAILED);
+            }
+            validateSeatForHold(st, userId);
+        }
+
+        LocalDateTime until = LocalDateTime.now().plusSeconds(holdTtlSeconds);
+        for (ShowtimeSeat st : seats) {
+            st.setStatus(SeatStatus.LOCKED);
+            st.setLockedBy(user);
+            st.setLockedUntil(until);
+        }
+
+        log.info("[seat-hold] success userId={} until={} count={}", userId, until, seats.size());
+        return new SeatHoldResponseDto(ids, until);
+    }
+
+    private void validateSeatForHold(ShowtimeSeat st, Long userId) {
+        switch (st.getStatus()) {
+            case AVAILABLE:
+                return;
+            case LOCKED:
+                if (st.getLockedBy() == null || !st.getLockedBy().getId().equals(userId)) {
+                    throw new ValidationException("These seats are being held by another user.");
+                }
+                return;
+            case BOOKED:
+            default:
+                throw new ValidationException(MSG_BOOKING_FAILED);
+        }
+    }
+
+    /** Release holds owned by this user (cancel checkout or leave payment page). */
+    @Transactional
+    public void releaseHold(Long userId, SeatHoldRequestDto dto) {
+        List<Long> ids = dto.getShowtimeSeatIds();
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        log.debug("[seat-hold] release userId={} seatIds={}", userId, ids);
+
+        seatHoldExpiryService.expireStaleLocks();
+
+        List<ShowtimeSeat> seats = showtimeSeatRepository.findByIdInForUpdate(ids);
+        for (ShowtimeSeat st : seats) {
+            if (st.getStatus() != SeatStatus.LOCKED) {
+                continue;
+            }
+            if (st.getLockedBy() != null && st.getLockedBy().getId().equals(userId)) {
+                st.setStatus(SeatStatus.AVAILABLE);
+                st.setLockedUntil(null);
+                st.setLockedBy(null);
+            }
+        }
+    }
+
     @Transactional
     public BookingResponseDto createBooking(Long userId, BookingRequestDto dto) {
         List<Long> ids = dto.getShowtimeSeatIds();
@@ -93,19 +191,35 @@ public class BookingService {
                     return new ResourceNotFoundException("User not found.");
                 });
 
+        seatHoldExpiryService.expireStaleLocks();
+
         List<ShowtimeSeat> seats = showtimeSeatRepository.findByIdInForUpdate(ids);
         if (seats.size() != ids.size()) {
             rejectBooking("Fewer seats than requested requestedIds=%s found=%s".formatted(ids, seats.size()));
         }
 
         Long showtimeId = seats.get(0).getShowtime().getId();
+        LocalDateTime now = LocalDateTime.now();
         for (ShowtimeSeat st : seats) {
             Long stId = st.getId();
             if (!Objects.equals(st.getShowtime().getId(), showtimeId)) {
                 rejectBooking("showtimeSeatId=%s wrong showtime".formatted(stId));
             }
-            if (st.getStatus() != SeatStatus.AVAILABLE) {
-                rejectBooking("showtimeSeatId=%s not available status=%s".formatted(stId, st.getStatus()));
+            // After expiry (committed in its own transaction), lapsed holds are AVAILABLE — long wait on payment page.
+            if (st.getStatus() == SeatStatus.AVAILABLE) {
+                throw new ValidationException(MSG_HOLD_EXPIRED);
+            }
+            if (st.getStatus() == SeatStatus.BOOKED) {
+                rejectBooking("showtimeSeatId=%s already booked".formatted(stId));
+            }
+            if (st.getStatus() != SeatStatus.LOCKED) {
+                rejectBooking("showtimeSeatId=%s expected LOCKED got %s".formatted(stId, st.getStatus()));
+            }
+            if (st.getLockedBy() == null || !st.getLockedBy().getId().equals(userId)) {
+                rejectBooking("showtimeSeatId=%s not locked by this user".formatted(stId));
+            }
+            if (st.getLockedUntil() == null || !st.getLockedUntil().isAfter(now)) {
+                throw new ValidationException(MSG_HOLD_EXPIRED);
             }
         }
 
@@ -126,11 +240,15 @@ public class BookingService {
         for (ShowtimeSeat st : seats) {
             st.setStatus(SeatStatus.BOOKED);
             st.setBooking(booking);
+            st.setLockedUntil(null);
+            st.setLockedBy(null);
         }
 
+        BookingResponseDto response = toDto(booking, user);
+        eventPublisher.publishEvent(new BookingConfirmedEvent(user.getEmail(), response));
         log.info("[booking-create] Success bookingId={} userId={} showtimeId={} seatCount={} total={}",
                 booking.getId(), userId, showtimeId, seats.size(), booking.getTotalAmount());
-        return toDto(booking, user);
+        return response;
     }
 
     private void rejectBooking(String internalReason) {
@@ -157,14 +275,14 @@ public class BookingService {
     @Transactional(readOnly = true)
     public List<BookingResponseDto> listBookingsForUser(Long userId) {
         log.debug("[bookings-list] userId={}", userId);
-        User user = userRepository.findById(userId)
+        User u = userRepository.findById(userId)
                 .orElseThrow(() -> {
                     log.warn("[bookings-list] User not found id={}", userId);
                     return new ResourceNotFoundException("User not found.");
                 });
-        List<Booking> bookings = bookingRepository.findAllByUserIdWithDetailsOrderByCreatedAtDesc(user.getId());
+        List<Booking> bookings = bookingRepository.findAllByUserIdWithDetailsOrderByCreatedAtDesc(u.getId());
         log.info("[bookings-list] userId={} bookingCount={}", userId, bookings.size());
-        return bookings.stream().map(b -> toDto(b, user)).collect(Collectors.toList());
+        return bookings.stream().map(b -> toDto(b, u)).collect(Collectors.toList());
     }
 
     private BookingResponseDto toDto(Booking booking, User user) {

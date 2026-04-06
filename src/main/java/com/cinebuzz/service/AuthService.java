@@ -1,7 +1,7 @@
 package com.cinebuzz.service;
 
+import com.cinebuzz.dto.request.CompleteRegistrationRequestDto;
 import com.cinebuzz.dto.request.LoginRequestDto;
-import com.cinebuzz.dto.request.RegisterRequestDto;
 import com.cinebuzz.dto.response.AuthResponseDto;
 import com.cinebuzz.entity.User;
 import com.cinebuzz.enums.Role;
@@ -31,18 +31,23 @@ public class AuthService {
     @Autowired
     private AuthenticationManager authenticationManager;
 
-    public AuthResponseDto registerUser(RegisterRequestDto dto) {
-        if (userRepository.existsByEmail(dto.getEmail())) {
-            throw new AlreadyExistsException("Email already registered: " + dto.getEmail());
+    public AuthResponseDto completeRegistration(CompleteRegistrationRequestDto dto) {
+        String email = jwtUtil.parseAndValidateRegistrationProofToken(dto.getRegistrationToken());
+        email = RegistrationOtpService.normalizeEmail(email);
+
+        if (userRepository.existsByEmail(email)) {
+            throw new AlreadyExistsException("This email is already registered. Sign in instead.");
         }
+
         User user = new User();
-        user.setName(dto.getName());
-        user.setEmail(dto.getEmail());
+        user.setName(dto.getName().trim());
+        user.setEmail(email);
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
         user.setRole(Role.ROLE_USER);
         userRepository.save(user);
+
         String token = jwtUtil.generateToken(user);
-        log.info("[auth] Registered userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());
+        log.info("[auth] Registration completed userId={} email={}", user.getId(), user.getEmail());
         return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
@@ -54,9 +59,10 @@ public class AuthService {
     }
 
     public AuthResponseDto login(LoginRequestDto dto) {
+        String email = RegistrationOtpService.normalizeEmail(dto.getEmail());
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(dto.getEmail(), dto.getPassword()));
-        User user = userRepository.findByEmail(dto.getEmail())
+                new UsernamePasswordAuthenticationToken(email, dto.getPassword()));
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         String token = jwtUtil.generateToken(user);
         log.info("[auth] Login success userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());

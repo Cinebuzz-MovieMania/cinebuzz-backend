@@ -1,0 +1,6 @@
+# Spring Boot does NOT load this filename. Copy this file to application-local.yml (same folder).
+# application-local.yml is gitignored so your password is not committed.
+# Or set env MAIL_PASSWORD or SPRING_MAIL_PASSWORD before starting the JVM.
+spring:
+  mail:
+    password: "trziyeslifmcpejf"

@@ -4,6 +4,8 @@ import com.cinebuzz.enums.SeatStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "showtime_seats",
         uniqueConstraints = @UniqueConstraint(columnNames = {"showtime_id", "seat_id"}))
@@ -32,4 +34,12 @@ public class ShowtimeSeat {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "booking_id")
     private Booking booking;
+
+    /** When status is LOCKED: reservation expires at this time (server clock). */
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "locked_by_user_id")
+    private User lockedBy;
 }

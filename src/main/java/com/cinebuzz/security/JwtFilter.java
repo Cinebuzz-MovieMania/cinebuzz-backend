@@ -1,6 +1,7 @@
 package com.cinebuzz.security;
 
 import com.cinebuzz.entity.User;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,7 +41,22 @@ public class JwtFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(7);
-        String email = jwtUtil.extractEmail(token);
+        final String email;
+        try {
+            email = jwtUtil.extractEmail(token);
+        } catch (JwtException e) {
+            // Expired, malformed, or bad signature — treat as anonymous so public routes still work
+            log.debug("JWT not accepted: {}", e.getMessage());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Registration-proof JWTs are not login sessions; do not load UserDetails (user may not exist yet).
+        String purpose = jwtUtil.extractPurpose(token);
+        if (JwtUtil.PURPOSE_REGISTRATION_PROOF.equals(purpose)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = userDetailsService.loadUserByUsername(email);

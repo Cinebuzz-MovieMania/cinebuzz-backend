@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local secrets (Gmail App Password, etc.) — not committed
+src/main/resources/application-local.yml

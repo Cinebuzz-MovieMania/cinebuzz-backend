@@ -1,8 +1,10 @@
 package com.cinebuzz.controller;
 
 import com.cinebuzz.dto.request.BookingRequestDto;
+import com.cinebuzz.dto.request.SeatHoldRequestDto;
 import com.cinebuzz.dto.response.ApiResponse;
 import com.cinebuzz.dto.response.BookingResponseDto;
+import com.cinebuzz.dto.response.SeatHoldResponseDto;
 import com.cinebuzz.dto.response.SeatMapResponseDto;
 import com.cinebuzz.entity.User;
 import com.cinebuzz.service.BookingService;
@@ -25,11 +27,12 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    @GetMapping("/showtimes/{showtimeId}/seats")
-    public ResponseEntity<ApiResponse<SeatMapResponseDto>> getSeatMap(@PathVariable Long showtimeId) {
-        log.debug("[api] GET /showtimes/{}/seats", showtimeId);
+    /** ShowtimeSeat rows for this show (status per seat). Prefer path {@code showtime-seats} over {@code seats}. */
+    @GetMapping({"/showtimes/{showtimeId}/showtime-seats", "/showtimes/{showtimeId}/seats"})
+    public ResponseEntity<ApiResponse<SeatMapResponseDto>> getShowtimeSeatMap(@PathVariable Long showtimeId) {
+        log.debug("[api] GET /showtimes/{}/showtime-seats", showtimeId);
         SeatMapResponseDto data = bookingService.getSeatMap(showtimeId);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Seat map loaded", data));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Showtime seat map loaded", data));
     }
 
     @GetMapping("/bookings")
@@ -39,6 +42,28 @@ public class BookingController {
         log.info("[api] GET /bookings principalUserId={} email={}", user.getId(), user.getEmail());
         List<BookingResponseDto> data = bookingService.listBookingsForUser(user.getId());
         return ResponseEntity.ok(new ApiResponse<>(true, "Bookings loaded", data));
+    }
+
+    /** After login: user reaches payment page — lock seats for this account until TTL (see {@code booking.hold-ttl-seconds}). */
+    @PostMapping("/bookings/hold")
+    public ResponseEntity<ApiResponse<SeatHoldResponseDto>> holdSeats(
+            @Valid @RequestBody SeatHoldRequestDto dto,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = requireCurrentUser(userDetails);
+        log.info("[api] POST /bookings/hold userId={} seats={}", user.getId(), dto.getShowtimeSeatIds());
+        SeatHoldResponseDto data = bookingService.createHold(user.getId(), dto);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Seats held for checkout", data));
+    }
+
+    /** Cancel checkout or leave payment page — release seats held by this user. */
+    @PostMapping("/bookings/release-hold")
+    public ResponseEntity<ApiResponse<Void>> releaseSeats(
+            @Valid @RequestBody SeatHoldRequestDto dto,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = requireCurrentUser(userDetails);
+        log.info("[api] POST /bookings/release-hold userId={} seats={}", user.getId(), dto.getShowtimeSeatIds());
+        bookingService.releaseHold(user.getId(), dto);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Hold released", null));
     }
 
     @PostMapping("/bookings")

@@ -8,6 +8,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Map;
+
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -19,6 +21,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(new ApiResponse<>(false, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(RateLimitException.class)
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> handleRateLimit(RateLimitException ex) {
+        log.warn("[http] 429 rate limit: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ApiResponse<>(false, ex.getMessage(),
+                        Map.of("retryAfterSeconds", ex.getRetryAfterSeconds())));
     }
 
     // Handles duplicate/conflict errors
