@@ -3,9 +3,11 @@ package com.cinebuzz.service;
 import com.cinebuzz.dto.request.CompleteRegistrationRequestDto;
 import com.cinebuzz.dto.request.LoginRequestDto;
 import com.cinebuzz.dto.response.AuthResponseDto;
+import com.cinebuzz.dto.response.UserProfileDto;
 import com.cinebuzz.entity.User;
 import com.cinebuzz.enums.Role;
 import com.cinebuzz.exception.AlreadyExistsException;
+import com.cinebuzz.exception.ResourceNotFoundException;
 import com.cinebuzz.repository.UserRepository;
 import com.cinebuzz.security.JwtUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -67,5 +69,13 @@ public class AuthService {
         String token = jwtUtil.generateToken(user);
         log.info("[auth] Login success userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());
         return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
+    }
+
+    public UserProfileDto updateProfileName(Long userId, String name) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        user.setName(name.trim());
+        userRepository.save(user);
+        return new UserProfileDto(user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 }

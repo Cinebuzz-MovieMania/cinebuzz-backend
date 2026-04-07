@@ -2,12 +2,18 @@ package com.cinebuzz.controller;
 
 import com.cinebuzz.dto.response.ApiResponse;
 import com.cinebuzz.dto.response.BrowseMovieRowDto;
+import com.cinebuzz.dto.response.PersonResponseDto;
 import com.cinebuzz.dto.response.ShowtimeResponseDto;
 import com.cinebuzz.service.BrowseService;
+import com.cinebuzz.service.PersonService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -18,6 +24,16 @@ public class BrowseController {
 
     @Autowired
     private BrowseService browseService;
+
+    @Autowired
+    private PersonService personService;
+
+    /** Public person profile (cast/crew detail on the home movie panel). */
+    @GetMapping("/persons/{id}")
+    public ResponseEntity<ApiResponse<PersonResponseDto>> personById(@PathVariable Long id) {
+        PersonResponseDto data = personService.getPersonById(id);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Person", data));
+    }
 
     @GetMapping("/movies")
     public ResponseEntity<ApiResponse<List<BrowseMovieRowDto>>> moviesForCity(@RequestParam Long cityId) {
