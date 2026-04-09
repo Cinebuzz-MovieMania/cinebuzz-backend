@@ -33,6 +33,9 @@ public class AuthService {
     @Autowired
     private AuthenticationManager authenticationManager;
 
+    @Autowired
+    private AuthMailService authMailService;
+
     public AuthResponseDto completeRegistration(CompleteRegistrationRequestDto dto) {
         String email = jwtUtil.parseAndValidateRegistrationProofToken(dto.getRegistrationToken());
         email = RegistrationOtpService.normalizeEmail(email);
@@ -50,6 +53,7 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user);
         log.info("[auth] Registration completed userId={} email={}", user.getId(), user.getEmail());
+        authMailService.sendWelcomeAfterRegistration(user.getEmail(), user.getName());
         return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
@@ -68,6 +72,7 @@ public class AuthService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         String token = jwtUtil.generateToken(user);
         log.info("[auth] Login success userId={} email={} role={}", user.getId(), user.getEmail(), user.getRole());
+        authMailService.sendWelcomeBackLogin(user.getEmail(), user.getName());
         return new AuthResponseDto(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 

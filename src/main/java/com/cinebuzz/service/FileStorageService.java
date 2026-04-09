@@ -62,13 +62,23 @@ public class FileStorageService {
                 .build();
     }
 
+    /** Movie posters (existing path). */
     public String store(MultipartFile file) {
+        return storeInFolder(file, "posters/");
+    }
+
+    /** Cast/crew profile photos — separate prefix in the same bucket. */
+    public String storePersonProfile(MultipartFile file) {
+        return storeInFolder(file, "person-profiles/");
+    }
+
+    private String storeInFolder(MultipartFile file, String folderPrefix) {
         String originalFilename = file.getOriginalFilename();
         String extension = "";
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
-        String key = "posters/" + UUID.randomUUID() + extension;
+        String key = folderPrefix + UUID.randomUUID() + extension;
 
         try {
             PutObjectRequest putRequest = PutObjectRequest.builder()

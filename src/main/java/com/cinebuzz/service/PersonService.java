@@ -14,6 +14,7 @@ import com.cinebuzz.repository.MovieRepository;
 import com.cinebuzz.repository.PersonRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -61,15 +62,46 @@ public class PersonService {
         person.setBio(dto.getBio());
         person.setDateOfBirth(dto.getDateOfBirth());
         person.setNationality(dto.getNationality());
-        person.setProfilePictureUrl(dto.getProfilePictureUrl());
-        person.setProfilePictureKey(dto.getProfilePictureKey());
+        if (dto.getProfilePictureUrl() != null) {
+            person.setProfilePictureUrl(dto.getProfilePictureUrl());
+        }
+        if (dto.getProfilePictureKey() != null) {
+            person.setProfilePictureKey(dto.getProfilePictureKey());
+        }
         Person updated = personRepository.save(person);
         return mapToDto(updated);
     }
 
-    public void deletePerson(Long id) {
-        if (!personRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Person not found with id: " + id);
+    @Transactional
+    public PersonResponseDto updateProfilePicture(Long id, String publicUrl, String storageKey,
+                                                  FileStorageService fileStorageService) {
+        Person person = personRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Person not found with id: " + id));
+        if (person.getProfilePictureKey() != null && !person.getProfilePictureKey().isBlank()) {
+            fileStorageService.delete(person.getProfilePictureKey());
+        }
+        person.setProfilePictureUrl(publicUrl);
+        person.setProfilePictureKey(storageKey);
+        return mapToDto(personRepository.save(person));
+    }
+
+    @Transactional
+    public PersonResponseDto removeProfilePicture(Long id, FileStorageService fileStorageService) {
+        Person person = personRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Person not found with id: " + id));
+        if (person.getProfilePictureKey() != null && !person.getProfilePictureKey().isBlank()) {
+            fileStorageService.delete(person.getProfilePictureKey());
+        }
+        person.setProfilePictureUrl(null);
+        person.setProfilePictureKey(null);
+        return mapToDto(personRepository.save(person));
+    }
+
+    public void deletePerson(Long id, FileStorageService fileStorageService) {
+        Person person = personRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Person not found with id: " + id));
+        if (person.getProfilePictureKey() != null && !person.getProfilePictureKey().isBlank()) {
+            fileStorageService.delete(person.getProfilePictureKey());
         }
         personRepository.deleteById(id);
     }

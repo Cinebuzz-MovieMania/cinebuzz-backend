@@ -1,6 +1,3 @@
-# Spring Boot does NOT load this filename. Copy this file to application-local.yml (same folder).
-# application-local.yml is gitignored so your password is not committed.
-# Or set env MAIL_PASSWORD or SPRING_MAIL_PASSWORD before starting the JVM.
-spring:
-  mail:
-    password: "trziyeslifmcpejf"
+# Credentials are loaded from .env (see backend/Cinebuzz/.env.example).
+# Copy .env.example to .env and set values. Optional: keep this file empty or use only for non-secret overrides.
+# Spring Boot optional import removed — use .env only for secrets.
