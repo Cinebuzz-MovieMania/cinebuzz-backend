@@ -9,11 +9,13 @@ import com.cinebuzz.exception.ResourceNotFoundException;
 import com.cinebuzz.exception.ValidationException;
 import com.cinebuzz.repository.ShowtimeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,9 @@ public class BrowseService {
 
     @Autowired
     private ShowtimeService showtimeService;
+
+    @Value("${cinebuzz.app-timezone:Asia/Kolkata}")
+    private String appTimezone;
 
     @Transactional(readOnly = true)
     public List<BrowseMovieRowDto> listMoviesForCity(Long cityId) {
@@ -56,7 +61,13 @@ public class BrowseService {
         LocalDateTime dayStart = date.atStartOfDay();
         LocalDateTime dayEnd = date.plusDays(1).atStartOfDay();
         List<Showtime> rows = showtimeRepository.findByCityMovieAndDateRange(cityId, movieId, dayStart, dayEnd);
-        return rows.stream().map(showtimeService::mapToDto).collect(Collectors.toList());
+        ZoneId zone = ZoneId.of(appTimezone);
+        LocalDateTime now = LocalDateTime.now(zone);
+        // Only showtimes still running or yet to start (hide shows whose end time has passed).
+        return rows.stream()
+                .filter(st -> st.getEndTime().isAfter(now))
+                .map(showtimeService::mapToDto)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)

@@ -71,3 +71,5 @@ cinebuzz:
   mail:
     from: ${CINEBUZZ_MAIL_FROM}
     send-login-welcome: true
+  # Used when filtering browse showtimes so past (ended) shows are hidden; match how showtimes are stored locally.
+  app-timezone: ${CINEBUZZ_APP_TIMEZONE:Asia/Kolkata}
